@@ -1,0 +1,11 @@
+# RegKit — agent notes
+
+- The undo discipline is load-bearing: prior state is captured BEFORE any mutation (`missing_ancestors` + the prior value read happen before `create_key`/`set_value`; a subtree snapshot completes before the first `delete_key`). Capturing after the fact records the world the operation created, not the one it replaced — the manifest would restore the damage.
+- Manifest entries are applied in REVERSE recording order by `apply_undo_with`. The write path records key_remove entries shallowest-first precisely so reversal deletes deepest-first; the delete path records key_create entries parents-first so reversal restores children before parents (and `value_restore` also creates its key, so restores are order-tolerant). Do not "simplify" to forward order.
+- Recursive delete refusal is a preflight, not a mid-delete discovery: the subkey check runs against the listing before the snapshot and before anything is deleted. A delete that fails halfway through a tree leaves a state no manifest describes.
+- The default value is name "" at the backend layer and an absent/`""` name at the spec layer. Both Windows (NULL value name) and the fake key on this. Do not invent a sentinel name like "(Default)" — it would collide with a real value of that name and break list/undo round-trips.
+- A qword above i64::MAX makes a manifest unrepresentable exactly, so write/delete refuse it BEFORE changing anything (`check_manifest_representable`). Silently recording a lossy old value would make undo a data-corruption tool; a loud refusal is the honest behaviour.
+- The backend trait is the test seam: all operation logic must stay backend-agnostic so the fake covers it. Windows-only behaviour belongs in `platform.rs`'s `win` module and nowhere else; the off-Windows backend returns ERR_NOT_SUPPORTED for everything, never a stub success.
+- The JSON engine (src/json.rs) is the family design — duplicate keys in one object are a PARSE ERROR by design; do not "fix" that into last-wins.
+- Zero dependencies; every advapi32 extern block carries `#[link(name = "advapi32")]`. Check/clippy do not link — CI's real Windows build is the link gate.
+- Gate: WinDevKit tools/gate.sh (fmt + clippy both targets + full tests). Windows runtime behaviour is Unverified until the windows-latest CI smoke test (and later a field test) runs the real HKCU roundtrip.
